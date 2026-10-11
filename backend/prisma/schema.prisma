@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Mirrors ../schema.sql. Database CHECK constraints remain in PostgreSQL.
+model User {
+  userId BigInt @id @default(autoincrement()) @map("user_id")
+  email String @unique @db.VarChar(320)
+  passwordHash String @map("password_hash")
+  role String @db.VarChar(20)
+  firstName String @map("first_name") @db.VarChar(100)
+  lastName String @map("last_name") @db.VarChar(100)
+  phone String? @db.VarChar(30)
+  dateOfBirth DateTime? @map("date_of_birth") @db.Date
+  doctorLicenseNumber String? @unique @map("doctor_license_number") @db.VarChar(100)
+  specialization String? @db.VarChar(150)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patientPrescriptions Prescription[] @relation("PrescriptionPatient")
+  prescriberPrescriptions Prescription[] @relation("PrescriptionPrescriber")
+  uploadedPrescriptions Prescription[] @relation("PrescriptionUploader")
+  reviewedPrescriptions Prescription[] @relation("PrescriptionReviewer")
+  allergies PatientAllergy[] @relation("AllergyPatient")
+  reportedAllergies PatientAllergy[] @relation("AllergyReporter")
+  verifiedAllergies PatientAllergy[] @relation("AllergyVerifier")
+  reactions ReactionHistory[] @relation("ReactionPatient")
+  reportedReactions ReactionHistory[] @relation("ReactionReporter")
+  verifiedReactions ReactionHistory[] @relation("ReactionVerifier")
+  fraudAssessments FraudRiskAssessment[] @relation("AssessmentRunner")
+  resolvedAlerts SafetyAlert[] @relation("AlertResolver")
+  auditLogs AuditLog[]
+  @@map("app_users")
+}
+
+model DrugClass {
+  classId BigInt @id @default(autoincrement()) @map("class_id")
+  className String @unique @map("class_name") @db.VarChar(150)
+  description String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  medicines Medicine[]
+  allergenClasses PatientAllergy[]
+  sourceCrossReactions CrossReactivity[] @relation("CrossReactionSource")
+  relatedCrossReactions CrossReactivity[] @relation("CrossReactionRelated")
+  @@map("drug_classes")
+}
+
+model Medicine {
+  medicineId BigInt @id @default(autoincrement()) @map("medicine_id")
+  medicineName String @map("medicine_name") @db.VarChar(200)
+  genericName String @map("generic_name") @db.VarChar(200)
+  strength String @db.VarChar(100)
+  dosageForm String @map("dosage_form") @db.VarChar(100)
+  route String @db.VarChar(100)
+  manufacturer String @db.VarChar(200)
+  classId BigInt? @map("class_id")
+  externalCode String? @unique @map("external_code") @db.VarChar(100)
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  drugClass DrugClass? @relation(fields: [classId], references: [classId], onDelete: Restrict)
+  prescriptionItems PrescriptionItem[]
+  reactionHistory ReactionHistory[]
+  firstInteractions DrugInteraction[] @relation("InteractionMedicineOne")
+  secondInteractions DrugInteraction[] @relation("InteractionMedicineTwo")
+  @@unique([genericName, strength, dosageForm, route, manufacturer], map: "medicines_identity_unique")
+  @@index([classId], map: "medicines_class_idx")
+  @@map("medicines")
+}
+
+model Prescription {
+  prescriptionId BigInt @id @default(autoincrement()) @map("prescription_id")
+  prescriptionNumber String @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("prescription_number")
+  patientUserId BigInt @map("patient_user_id")
+  prescriberUserId BigInt @map("prescriber_user_id")
+  uploadedByUserId BigInt @map("uploaded_by_user_id")
+  issueDate DateTime @map("issue_date") @db.Date
+  imagePath String? @map("image_path")
+  status String @default("uploaded") @db.VarChar(20)
+  pharmacistNotes String? @map("pharmacist_notes")
+  reviewedByUserId BigInt? @map("reviewed_by_user_id")
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  patient User @relation("PrescriptionPatient", fields: [patientUserId], references: [userId], onDelete: Restrict)
+  prescriber User @relation("PrescriptionPrescriber", fields: [prescriberUserId], references: [userId], onDelete: Restrict)
+  uploader User @relation("PrescriptionUploader", fields: [uploadedByUserId], references: [userId], onDelete: Restrict)
+  reviewer User? @relation("PrescriptionReviewer", fields: [reviewedByUserId], references: [userId], onDelete: SetNull)
+  items PrescriptionItem[]
+  ocrResults OcrResult[]
+  fraudAssessments FraudRiskAssessment[]
+  safetyAlerts SafetyAlert[]
+  @@index([patientUserId, issueDate(sort: Desc)], map: "prescriptions_patient_issue_date_idx")
+  @@index([status], map: "prescriptions_status_idx")
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  prescriptionItemId BigInt @id @default(autoincrement()) @map("prescription_item_id")
+  prescriptionId BigInt @map("prescription_id")
+  medicineId BigInt @map("medicine_id")
+  doseAmount Decimal @map("dose_amount") @db.Decimal(10, 2)
+  doseUnit String @map("dose_unit") @db.VarChar(50)
+  frequency String @db.VarChar(100)
+  route String @db.VarChar(100)
+  durationDays Int @map("duration_days")
+  quantity Int
+  instructions String?
+  prescription Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+  medicine Medicine @relation(fields: [medicineId], references: [medicineId], onDelete: Restrict)
+  safetyAlerts SafetyAlert[]
+  @@unique([prescriptionId, medicineId], map: "prescription_items_unique_medicine")
+  @@index([medicineId], map: "prescription_items_medicine_idx")
+  @@map("prescription_items")
+}
+
+model OcrResult {
+  ocrId BigInt @id @default(autoincrement()) @map("ocr_id")
+  prescriptionId BigInt @map("prescription_id")
+  extractedText String @map("extracted_text")
+  confidence Decimal @db.Decimal(5, 2)
+  engineName String @default("Tesseract") @map("engine_name") @db.VarChar(100)
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+  prescription Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+  @@map("ocr_results")
+}
+
+model PatientAllergy {
+  allergyId BigInt @id @default(autoincrement()) @map("allergy_id")
+  patientUserId BigInt @map("patient_user_id")
+  allergenName String @map("allergen_name") @db.VarChar(200)
+  allergenClassId BigInt? @map("allergen_class_id")
+  reactionDescription String? @map("reaction_description")
+  severity String @db.VarChar(20)
+  verificationStatus String @default("self_reported") @map("verification_status") @db.VarChar(30)
+  reportedByUserId BigInt @map("reported_by_user_id")
+  verifiedByUserId BigInt? @map("verified_by_user_id")
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
+  patient User @relation("AllergyPatient", fields: [patientUserId], references: [userId], onDelete: Cascade)
+  allergenClass DrugClass? @relation(fields: [allergenClassId], references: [classId], onDelete: SetNull)
+  reporter User @relation("AllergyReporter", fields: [reportedByUserId], references: [userId], onDelete: Restrict)
+  verifier User? @relation("AllergyVerifier", fields: [verifiedByUserId], references: [userId], onDelete: SetNull)
+  @@unique([patientUserId, allergenName], map: "patient_allergies_unique_allergen")
+  @@index([patientUserId], map: "patient_allergies_patient_idx")
+  @@map("patient_allergies")
+}
+
+model ReactionHistory {
+  reactionId BigInt @id @default(autoincrement()) @map("reaction_id")
+  patientUserId BigInt @map("patient_user_id")
+  medicineId BigInt @map("medicine_id")
+  reactionDescription String @map("reaction_description")
+  severity String @db.VarChar(20)
+  reactionDate DateTime @map("reaction_date") @db.Date
+  verificationStatus String @default("self_reported") @map("verification_status") @db.VarChar(30)
+  reportedByUserId BigInt @map("reported_by_user_id")
+  verifiedByUserId BigInt? @map("verified_by_user_id")
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
+  patient User @relation("ReactionPatient", fields: [patientUserId], references: [userId], onDelete: Cascade)
+  medicine Medicine @relation(fields: [medicineId], references: [medicineId], onDelete: Restrict)
+  reporter User @relation("ReactionReporter", fields: [reportedByUserId], references: [userId], onDelete: Restrict)
+  verifier User? @relation("ReactionVerifier", fields: [verifiedByUserId], references: [userId], onDelete: SetNull)
+  @@unique([patientUserId, medicineId, reactionDate, reactionDescription], map: "reaction_history_unique_entry")
+  @@index([patientUserId], map: "reaction_history_patient_idx")
+  @@map("reaction_history")
+}
+
+model DrugInteraction {
+  interactionId BigInt @id @default(autoincrement()) @map("interaction_id")
+  medicineId1 BigInt @map("medicine_id_1")
+  medicineId2 BigInt @map("medicine_id_2")
+  severity String @db.VarChar(20)
+  description String
+  referenceSource String? @map("reference_source")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  medicineOne Medicine @relation("InteractionMedicineOne", fields: [medicineId1], references: [medicineId], onDelete: Cascade)
+  medicineTwo Medicine @relation("InteractionMedicineTwo", fields: [medicineId2], references: [medicineId], onDelete: Cascade)
+  @@unique([medicineId1, medicineId2], map: "drug_interactions_unique_pair")
+  @@map("drug_interactions")
+}
+
+model CrossReactivity {
+  crossReactivityId BigInt @id @default(autoincrement()) @map("cross_reactivity_id")
+  sourceClassId BigInt @map("source_class_id")
+  relatedClassId BigInt @map("related_class_id")
+  severity String @db.VarChar(20)
+  note String
+  referenceSource String @map("reference_source")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  sourceClass DrugClass @relation("CrossReactionSource", fields: [sourceClassId], references: [classId], onDelete: Cascade)
+  relatedClass DrugClass @relation("CrossReactionRelated", fields: [relatedClassId], references: [classId], onDelete: Cascade)
+  @@unique([sourceClassId, relatedClassId], map: "cross_reactivity_unique_pair")
+  @@map("cross_reactivity")
+}
+
+model FraudRiskAssessment {
+  assessmentId BigInt @id @default(autoincrement()) @map("assessment_id")
+  prescriptionId BigInt @map("prescription_id")
+  assessedByUserId BigInt? @map("assessed_by_user_id")
+  riskScore Decimal @map("risk_score") @db.Decimal(5, 2)
+  riskLevel String @map("risk_level") @db.VarChar(20)
+  modelVersion String @map("model_version") @db.VarChar(100)
+  explanation String?
+  assessedAt DateTime @default(now()) @map("assessed_at") @db.Timestamptz(6)
+  prescription Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+  assessedBy User? @relation("AssessmentRunner", fields: [assessedByUserId], references: [userId], onDelete: SetNull)
+  @@unique([prescriptionId, modelVersion], map: "fraud_risk_unique_model_run")
+  @@map("fraud_risk_assessments")
+}
+
+model SafetyAlert {
+  alertId BigInt @id @default(autoincrement()) @map("alert_id")
+  prescriptionId BigInt @map("prescription_id")
+  prescriptionItemId BigInt @map("prescription_item_id")
+  alertType String @map("alert_type") @db.VarChar(30)
+  severity String @db.VarChar(20)
+  sourceBasis String @map("source_basis") @db.VarChar(30)
+  message String
+  patientMessage String? @map("patient_message")
+  isResolved Boolean @default(false) @map("is_resolved")
+  resolvedByUserId BigInt? @map("resolved_by_user_id")
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  prescription Prescription @relation(fields: [prescriptionId], references: [prescriptionId], onDelete: Cascade)
+  prescriptionItem PrescriptionItem @relation(fields: [prescriptionItemId], references: [prescriptionItemId], onDelete: Cascade)
+  resolvedBy User? @relation("AlertResolver", fields: [resolvedByUserId], references: [userId], onDelete: SetNull)
+  @@unique([prescriptionId, prescriptionItemId, alertType, sourceBasis], map: "safety_alerts_unique_match")
+  @@map("safety_alerts")
+}
+
+model AuditLog {
+  auditLogId BigInt @id @default(autoincrement()) @map("audit_log_id")
+  actorUserId BigInt? @map("actor_user_id")
+  action String @db.VarChar(30)
+  entityType String @map("entity_type") @db.VarChar(100)
+  entityId BigInt? @map("entity_id")
+  eventData Json @default("{}") @map("event_data")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor User? @relation(fields: [actorUserId], references: [userId], onDelete: SetNull)
+  @@index([entityType, entityId], map: "audit_logs_entity_idx")
+  @@map("audit_logs")
+}

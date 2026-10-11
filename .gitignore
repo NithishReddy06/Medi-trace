@@ -1,0 +1,25 @@
+# Dependencies and local package caches
+**/node_modules/
+**/.npm-cache/
+
+# Local environment files (templates remain versioned)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Generated application data and builds
+**/uploads/
+**/dist/
+**/build/
+coverage/
+*.log
+*.pid
+
+# Local IDE and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Accidental local credential artifacts
+**/*PASSWORD=*
