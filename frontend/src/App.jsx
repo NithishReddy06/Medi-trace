@@ -911,6 +911,142 @@ function PatientModule() {
   </section>;
 }
 
+function PharmacistModule() {
+  const { session } = useAuth();
+  const [query, setQuery] = useState("");
+  const [patients, setPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [checkingPrescriptionId, setCheckingPrescriptionId] = useState(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [lastCheck, setLastCheck] = useState(null);
+
+  async function pharmacistRequest(path, options = {}) {
+    const response = await fetch(`${API_URL}/api/pharmacist${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${session.token}`,
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "The request could not be completed.");
+    return data;
+  }
+
+  function clearMessages() {
+    setError("");
+    setNotice("");
+  }
+
+  async function searchPatients(event) {
+    event.preventDefault();
+    const trimmedQuery = query.trim();
+    clearMessages();
+    setSelectedPatient(null);
+    setLastCheck(null);
+    if (trimmedQuery.length < 2) {
+      setError("Enter at least two characters to search patients.");
+      setPatients([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const data = await pharmacistRequest(`/patients?query=${encodeURIComponent(trimmedQuery)}`);
+      setPatients(data.patients || []);
+      if (!(data.patients || []).length) setNotice("No patient records matched that search.");
+    } catch (requestError) {
+      setPatients([]);
+      setError(requestError.name === "TypeError" ? "Could not connect to MediTrace. Check that the backend is running." : requestError.message);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function loadPatient(patientId) {
+    clearMessages();
+    setIsLoadingProfile(true);
+    setLastCheck(null);
+    try {
+      const data = await pharmacistRequest(`/patients/${patientId}/safety-profile`);
+      setSelectedPatient(data.patient);
+    } catch (requestError) {
+      setSelectedPatient(null);
+      setError(requestError.message);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  }
+
+  async function runSafetyCheck(prescriptionId) {
+    clearMessages();
+    setCheckingPrescriptionId(prescriptionId);
+    try {
+      const data = await pharmacistRequest(`/prescriptions/${prescriptionId}/safety-check`, { method: "POST" });
+      setLastCheck({ prescriptionId, alerts: data.alerts || [], checkedRules: data.checkedRules || [] });
+      setNotice(data.message);
+      const profileData = await pharmacistRequest(`/patients/${selectedPatient.id}/safety-profile`);
+      setSelectedPatient(profileData.patient);
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setCheckingPrescriptionId(null);
+    }
+  }
+
+  return <section className="pharmacist-page page-width">
+    <div className="pharmacist-heading">
+      <div><p className="eyebrow"><span /> Pharmacist workspace</p><h1>Start with the patient safety record.</h1><p>Find the patient, review allergy and reaction history, then run deterministic checks against the prescription before making a clinical decision.</p></div>
+      <div className="rules-card"><small>CHECK ENGINE</small><strong>Safety rules v1</strong><span>Allergy · reactions · interactions</span></div>
+    </div>
+
+    <div className="pharmacist-safety-note"><span aria-hidden="true">!</span><p><b>Decision support only:</b> A safety alert requires pharmacist assessment. No result automatically approves, rejects, or dispenses a prescription.</p></div>
+    {error && <div className="patient-message is-error" role="alert"><b>Something needs attention</b><span>{error}</span></div>}
+    {notice && <div className="patient-message is-success" role="status"><b>Safety check updated</b><span>{notice}</span></div>}
+
+    <section className="pharmacist-search-card">
+      <form onSubmit={searchPatients} className="patient-search-form" noValidate>
+        <label htmlFor="patient-search">Find a patient</label>
+        <div><input id="patient-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by patient name or email" maxLength="100" /><button className="primary-button" type="submit" disabled={isSearching}>{isSearching ? <><span className="spinner" /> Searching</> : <>Search patient <span aria-hidden="true">→</span></>}</button></div>
+        <small>Use at least two characters. Only patient records are returned.</small>
+      </form>
+      {patients.length > 0 && <div className="patient-search-results" aria-live="polite">{patients.map((patient) => <button className={`patient-result ${selectedPatient?.id === patient.id ? "is-selected" : ""}`} type="button" key={patient.id} onClick={() => loadPatient(patient.id)} disabled={isLoadingProfile}><span className="patient-initials">{patient.firstName[0]}{patient.lastName[0]}</span><span><b>{patient.firstName} {patient.lastName}</b><small>{patient.email} · DOB {displayDate(patient.dateOfBirth)}</small></span><span className="patient-result-counts"><i>{patient.counts.allergies} allergies</i><i>{patient.counts.reactions} reactions</i><i>{patient.counts.prescriptions} prescriptions</i></span><strong>→</strong></button>)}</div>}
+    </section>
+
+    {isLoadingProfile && <RouteLoading />}
+    {!isLoadingProfile && selectedPatient && <div className="pharmacist-review-layout">
+      <div className="pharmacist-main-stack">
+        <section className="pharmacist-card patient-identity-card">
+          <div className="patient-card-heading"><div><span className="section-number">01</span><h2>{selectedPatient.firstName} {selectedPatient.lastName}</h2></div><span className="record-tag">Patient selected</span></div>
+          <div className="identity-details"><div><small>Email</small><span>{selectedPatient.email}</span></div><div><small>Phone</small><span>{selectedPatient.phone || "Not recorded"}</span></div><div><small>Date of birth</small><span>{displayDate(selectedPatient.dateOfBirth)}</span></div><div><small>Safety data</small><span>{selectedPatient.allergies.length} allergies · {selectedPatient.reactions.length} reactions</span></div></div>
+        </section>
+
+        <section className="pharmacist-card">
+          <div className="patient-card-heading"><div><span className="section-number">02</span><h2>Allergy safety profile</h2></div><span className="record-tag">Review before dispensing</span></div>
+          <div className="pharmacist-record-list">{selectedPatient.allergies.length ? selectedPatient.allergies.map((allergy) => <article className="pharmacist-record" key={allergy.id}><div className="record-title"><h3>{allergy.allergenName}</h3><span className={`severity-badge is-${allergy.severity}`}>{prettyLabel(allergy.severity)}</span></div><p>{allergy.reactionDescription || "Reaction details not recorded."}</p><small>{allergy.allergenClass?.name || "No drug class linked"} · {prettyLabel(allergy.verificationStatus)}</small></article>) : <p className="empty-record">No allergies have been recorded for this patient.</p>}</div>
+        </section>
+
+        <section className="pharmacist-card">
+          <div className="patient-card-heading"><div><span className="section-number">03</span><h2>Medicine reaction history</h2></div><span className="record-tag">Review before dispensing</span></div>
+          <div className="pharmacist-record-list">{selectedPatient.reactions.length ? selectedPatient.reactions.map((reaction) => <article className="pharmacist-record" key={reaction.id}><div className="record-title"><h3>{reaction.medicine.name} <small>{reaction.medicine.strength}</small></h3><span className={`severity-badge is-${reaction.severity}`}>{prettyLabel(reaction.severity)}</span></div><p>{reaction.reactionDescription}</p><small>{displayDate(reaction.reactionDate)} · {prettyLabel(reaction.verificationStatus)}</small></article>) : <p className="empty-record">No previous medicine reactions have been recorded for this patient.</p>}</div>
+        </section>
+      </div>
+
+      <aside className="prescription-review-panel">
+        <div className="patient-card-heading"><div><span className="section-number">04</span><h2>Prescription review</h2></div><span className="record-tag">Human decision required</span></div>
+        <p>Select a prescription and run the safety rules. Alerts are stored with their source basis and must be reviewed by a pharmacist.</p>
+        <div className="pharmacist-prescription-list">{selectedPatient.prescriptions.length ? selectedPatient.prescriptions.map((prescription) => <article className="pharmacist-prescription" key={prescription.id}><div className="prescription-status"><span className={`status-badge is-${prescription.status}`}>{prettyLabel(prescription.status)}</span><time>{displayDate(prescription.issueDate)}</time></div><h3>Dr. {prescription.prescriber?.firstName} {prescription.prescriber?.lastName}</h3><div className="review-medicine-list">{prescription.items.map((item) => <div key={item.id}><b>{item.medicine.name}</b><span>{item.medicine.genericName} · {item.medicine.strength} · {item.frequency}</span>{item.safetyAlerts.filter((alert) => !alert.isResolved).map((alert) => <small className={`review-alert is-${alert.severity}`} key={alert.id}>{prettyLabel(alert.alertType)} · {prettyLabel(alert.severity)}</small>)}</div>)}</div><button className="primary-button rule-check-button" type="button" onClick={() => runSafetyCheck(prescription.id)} disabled={checkingPrescriptionId !== null}>{checkingPrescriptionId === prescription.id ? <><span className="spinner" /> Checking rules</> : <>Run safety checks <span aria-hidden="true">→</span></>}</button>{lastCheck?.prescriptionId === prescription.id && <div className="check-result"><b>{lastCheck.alerts.length ? `${lastCheck.alerts.length} alert${lastCheck.alerts.length === 1 ? "" : "s"} found` : "No rule-based alerts"}</b>{lastCheck.alerts.length ? lastCheck.alerts.map((alert) => <p key={alert.id || `${alert.alertType}-${alert.message}`}><span className={`severity-badge is-${alert.severity}`}>{prettyLabel(alert.severity)}</span>{alert.message}</p>) : <p>The defined allergy, reaction, cross-reactivity, and interaction rules returned no matches. Clinical review is still required.</p>}</div>}</article>) : <div className="empty-prescriptions"><span>↗</span><b>No prescriptions are available for this patient.</b><p>Once a prescription is uploaded, it can be checked here.</p></div>}</div>
+      </aside>
+    </div>}
+
+    {!isLoadingProfile && !selectedPatient && !patients.length && !error && <div className="pharmacist-empty-state"><span>01</span><div><b>Search for a patient to begin the pharmacist workflow.</b><p>The patient profile is loaded only after you choose a search result, then the safety checks are run against a selected prescription.</p></div></div>}
+  </section>;
+}
+
 const DASHBOARD_CONTENT = {
   patient: { label: "Patient workspace", title: "Your prescription information, in one place.", description: "Your allergy profile, reaction history, prescriptions, and pharmacist updates will appear here.", tasks: ["Keep allergy information current", "Review prescription status", "Read patient-friendly safety updates"], action: "View my profile", actionPath: "/patient" },
   pharmacist: { label: "Pharmacist workspace", title: "Start with the patient record.", description: "Search patients, verify prescription details, and complete an accountable review from one workspace.", tasks: ["Find a patient", "Review allergy and reaction history", "Read a prescription image"], action: "Start prescription review", actionPath: "/prescriptions/new" },
@@ -934,7 +1070,7 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><RoleDashboard /></ProtectedRoute>} />
         <Route path="/patient" element={<ProtectedRoute allowedRoles={["patient"]}><PatientModule /></ProtectedRoute>} />
-        <Route path="/pharmacist" element={<ProtectedRoute allowedRoles={["pharmacist"]}><RoleDashboard /></ProtectedRoute>} />
+        <Route path="/pharmacist" element={<ProtectedRoute allowedRoles={["pharmacist", "admin"]}><PharmacistModule /></ProtectedRoute>} />
         <Route path="/doctor" element={<ProtectedRoute allowedRoles={["doctor"]}><RoleDashboard /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><RoleDashboard /></ProtectedRoute>} />
         <Route path="/prescriptions/new" element={<ProtectedRoute allowedRoles={["pharmacist", "doctor", "admin"]}><PrescriptionPage /></ProtectedRoute>} />

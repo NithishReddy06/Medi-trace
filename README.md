@@ -65,6 +65,9 @@ and audit events.
 - Patient module: profile maintenance, patient-owned allergy and reaction
   history CRUD, patient-only prescription visibility, and audit-log entries
   for every patient data change
+- Pharmacist module: patient search, patient safety-profile review, and
+  database-backed rule checks for direct allergies, cross-reactivity, prior
+  medicine reactions, and drug interactions
 
 ## Demo sign-in
 
@@ -77,8 +80,9 @@ coursework prototype.
 ## Current implementation status
 
 The OCR upload and extraction flow works. Authentication, role-based access,
-and the patient module are complete. Pharmacist patient search and safety-rule
-execution, ML scoring, and live monitoring dashboards remain to be built.
+the patient module, and the pharmacist safety-review module are complete.
+ML scoring, prescription creation/review completion, and live monitoring
+dashboards remain to be built.
 
 ## Patient API routes
 
@@ -96,3 +100,20 @@ identity from that token, so a patient cannot request another patient's data.
 Patients can change only self-reported allergy and reaction entries. A
 pharmacist-verified entry is intentionally protected from patient edits and
 deletion, preserving the review trail.
+
+## Pharmacist safety workflow
+
+All pharmacist routes require a pharmacist or administrator JWT. Opening a
+patient safety profile writes a `VIEW` audit event; running the checks writes a
+`REVIEW` audit event and persists matching records in `safety_alerts`.
+
+- `GET` `/api/pharmacist/patients?query=liam`
+- `GET` `/api/pharmacist/patients/:patientId/safety-profile`
+- `POST` `/api/pharmacist/prescriptions/:prescriptionId/safety-check`
+
+The `safety-rules-v1` check compares prescription items with the patient's
+allergy class, reference cross-reactivity records, previous reactions, and
+medicine-pair interactions. It only creates review alerts; it never approves
+or rejects a prescription. The seeded Liam Bennett example includes a
+Penicillin-class allergy and an Amoxicillin prescription, which demonstrates a
+direct-allergy alert.

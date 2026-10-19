@@ -19,6 +19,7 @@ const {
 const { extractPrescriptionData } = require("./services/prescriptionExtractionService");
 const { analyzePrescriptionImage } = require("./services/prescriptionAnalysisService");
 const patientRoutes = require("./routes/patient");
+const pharmacistRoutes = require("./routes/pharmacist");
 
 const app = express();
 const PORT = env.PORT;
@@ -119,6 +120,7 @@ app.get("/api/auth/me", requireAuth, (request, response) => {
 });
 
 app.use("/api/patient", requireAuth, requireRole("patient"), patientRoutes);
+app.use("/api/pharmacist", requireAuth, requireRole("pharmacist", "admin"), pharmacistRoutes);
 
 app.get("/api/db-test", requireAuth, requireRole("admin"), async (request, response) => {
   try {
