@@ -39,6 +39,10 @@ and audit events.
    npm run dev
    ```
 
+   Set `JWT_SECRET` in `backend/.env` to a long, unique local secret before
+   starting the backend. The server intentionally refuses to start with the
+   placeholder value from `.env.example`.
+
 3. Start the frontend:
 
    ```bash
@@ -56,9 +60,18 @@ and audit events.
 - Trigger: automatically updates modified timestamps
 - Stored procedure: `review_prescription(...)`
 - Seed data is fictional and uses a local demo password only
+- Bcrypt password verification, time-limited JWT sessions, and backend role
+  checks for patient, pharmacist, doctor, admin, and auditor accounts
+
+## Demo sign-in
+
+All seeded coursework users use the password `DemoPass123!`. For the
+pharmacist review workflow, sign in as `noah.pharmacist@example.test`.
+These credentials are fictional and must never be used outside this local
+coursework prototype.
 
 ## Current implementation status
 
-The OCR upload and extraction flow works. Authentication, role-based modules,
-patient management, safety-rule execution, ML scoring, and dashboards are the
-next implementation stages.
+The OCR upload and extraction flow works. Authentication and role-based
+dashboard shells are complete. Patient management, pharmacist safety-rule
+execution, ML scoring, live dashboard data, and monitoring remain to be built.

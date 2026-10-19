@@ -1,21 +1,31 @@
-require("dotenv").config();
-
 const crypto = require("crypto");
+const bcrypt = require("bcrypt");
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
+const helmet = require("helmet");
+const morgan = require("morgan");
 const path = require("path");
 const multer = require("multer");
+const env = require("./config/env");
 const prisma = require("./config/prisma");
+const {
+  publicUserSelect,
+  requireAuth,
+  requireRole,
+  serializeUser,
+  signAccessToken,
+} = require("./middleware/auth");
 const { extractPrescriptionData } = require("./services/prescriptionExtractionService");
 const { analyzePrescriptionImage } = require("./services/prescriptionAnalysisService");
 
 const app = express();
-const PORT = Number(process.env.PORT || 5000);
+const PORT = env.PORT;
 const allowedFrontendOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:5173",
+  env.FRONTEND_URL,
   "http://127.0.0.1:5173",
 ];
+const REVIEW_ROLES = ["pharmacist", "doctor", "admin"];
 const uploadDirectory = path.join(__dirname, "..", "uploads", "prescriptions");
 const allowedImageTypes = new Map([
   ["image/jpeg", new Set([".jpg", ".jpeg"])],
@@ -51,6 +61,8 @@ function hasValidImageSignature(file) {
   return isJpeg || isPng;
 }
 
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(morgan("dev"));
 app.use(cors({ origin: allowedFrontendOrigins }));
 app.use(express.json());
 
@@ -58,7 +70,54 @@ app.get("/api/health", (request, response) => {
   response.json({ status: "ok", service: "MediTrace backend" });
 });
 
-app.get("/api/db-test", async (request, response) => {
+app.post("/api/auth/login", async (request, response) => {
+  const body = request.body || {};
+  const email = typeof body.email === "string"
+    ? body.email.trim().toLowerCase()
+    : "";
+  const password = typeof body.password === "string" ? body.password : "";
+
+  if (!email || !password) {
+    return response.status(400).json({
+      status: "error",
+      message: "Email and password are required.",
+    });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { ...publicUserSelect, passwordHash: true },
+    });
+    const passwordMatches = user
+      ? await bcrypt.compare(password, user.passwordHash).catch(() => false)
+      : false;
+
+    if (!user || !user.isActive || !passwordMatches) {
+      return response.status(401).json({
+        status: "error",
+        message: "Incorrect email or password.",
+      });
+    }
+
+    const token = signAccessToken(user);
+    response.json({
+      status: "ok",
+      token,
+      expiresIn: env.JWT_EXPIRES_IN,
+      user: serializeUser(user),
+    });
+  } catch (error) {
+    console.error("Login failed:", error.message);
+    response.status(500).json({ status: "error", message: "Could not sign in. Please try again." });
+  }
+});
+
+app.get("/api/auth/me", requireAuth, (request, response) => {
+  response.json({ status: "ok", user: request.user });
+});
+
+app.get("/api/db-test", requireAuth, requireRole("admin"), async (request, response) => {
   try {
     const result = await prisma.$queryRaw`SELECT current_database() AS database_name, NOW() AS server_time`;
 
@@ -77,7 +136,7 @@ app.get("/api/db-test", async (request, response) => {
   }
 });
 
-app.post("/api/prescriptions/extract", (request, response) => {
+app.post("/api/prescriptions/extract", requireAuth, requireRole(...REVIEW_ROLES), (request, response) => {
   try {
     const extraction = extractPrescriptionData(request.body.ocrText);
     response.json({ status: "ok", ...extraction });
@@ -86,7 +145,7 @@ app.post("/api/prescriptions/extract", (request, response) => {
   }
 });
 
-app.post("/api/prescriptions/analyze", (request, response, next) => {
+app.post("/api/prescriptions/analyze", requireAuth, requireRole(...REVIEW_ROLES), (request, response, next) => {
   upload.single("prescriptionImage")(request, response, async (uploadError) => {
     if (uploadError) {
       return next(uploadError);
@@ -160,7 +219,7 @@ app.post("/api/prescriptions/analyze", (request, response, next) => {
   });
 });
 
-app.post("/api/prescriptions/:prescriptionId/image", (request, response, next) => {
+app.post("/api/prescriptions/:prescriptionId/image", requireAuth, requireRole(...REVIEW_ROLES), (request, response, next) => {
   upload.single("prescriptionImage")(request, response, async (uploadError) => {
     if (uploadError) {
       return next(uploadError);
@@ -237,6 +296,8 @@ app.use((error, request, response, next) => {
 
   next();
 });
+
+env.validate();
 
 app.listen(PORT, () => {
   console.log(`MediTrace backend running on http://localhost:${PORT}`);

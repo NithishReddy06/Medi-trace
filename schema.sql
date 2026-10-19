@@ -1,9 +1,9 @@
 -- MediTrace - PostgreSQL 15+ schema
--- Run on a new/empty database. Application CRUD belongs in Prisma.
+
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- One authentication table for all roles, as required by the course brief.
+-- One authentication table for all roles.
 CREATE TABLE app_users (
   user_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   email VARCHAR(320) NOT NULL UNIQUE CHECK (email = LOWER(email)),
