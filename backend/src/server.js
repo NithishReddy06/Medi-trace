@@ -18,6 +18,7 @@ const {
 } = require("./middleware/auth");
 const { extractPrescriptionData } = require("./services/prescriptionExtractionService");
 const { analyzePrescriptionImage } = require("./services/prescriptionAnalysisService");
+const patientRoutes = require("./routes/patient");
 
 const app = express();
 const PORT = env.PORT;
@@ -116,6 +117,8 @@ app.post("/api/auth/login", async (request, response) => {
 app.get("/api/auth/me", requireAuth, (request, response) => {
   response.json({ status: "ok", user: request.user });
 });
+
+app.use("/api/patient", requireAuth, requireRole("patient"), patientRoutes);
 
 app.get("/api/db-test", requireAuth, requireRole("admin"), async (request, response) => {
   try {

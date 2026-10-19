@@ -62,16 +62,37 @@ and audit events.
 - Seed data is fictional and uses a local demo password only
 - Bcrypt password verification, time-limited JWT sessions, and backend role
   checks for patient, pharmacist, doctor, admin, and auditor accounts
+- Patient module: profile maintenance, patient-owned allergy and reaction
+  history CRUD, patient-only prescription visibility, and audit-log entries
+  for every patient data change
 
 ## Demo sign-in
 
 All seeded coursework users use the password `DemoPass123!`. For the
-pharmacist review workflow, sign in as `noah.pharmacist@example.test`.
+pharmacist review workflow, sign in as `noah.pharmacist@example.test`; for the
+patient workspace, sign in as `liam.bennett@example.test`.
 These credentials are fictional and must never be used outside this local
 coursework prototype.
 
 ## Current implementation status
 
-The OCR upload and extraction flow works. Authentication and role-based
-dashboard shells are complete. Patient management, pharmacist safety-rule
-execution, ML scoring, live dashboard data, and monitoring remain to be built.
+The OCR upload and extraction flow works. Authentication, role-based access,
+and the patient module are complete. Pharmacist patient search and safety-rule
+execution, ML scoring, and live monitoring dashboards remain to be built.
+
+## Patient API routes
+
+All routes below require a valid patient JWT. The server derives the patient
+identity from that token, so a patient cannot request another patient's data.
+
+- `GET` / `PATCH` `/api/patient/profile`
+- `GET` / `POST` `/api/patient/allergies`
+- `PATCH` / `DELETE` `/api/patient/allergies/:allergyId`
+- `GET` / `POST` `/api/patient/reactions`
+- `PATCH` / `DELETE` `/api/patient/reactions/:reactionId`
+- `GET` `/api/patient/prescriptions`
+- `GET` `/api/patient/medicines`
+
+Patients can change only self-reported allergy and reaction entries. A
+pharmacist-verified entry is intentionally protected from patient edits and
+deletion, preserving the review trail.
