@@ -657,7 +657,7 @@ function LoginPage() {
   }
 
   return <section className="login-page page-width">
-    <div className="login-intro"><p className="eyebrow"><span /> Secure workspace</p><h1>Sign in to continue your review.</h1><p>Access is assigned by role. Your dashboard and available actions are based on your MediTrace account.</p><div className="login-assurance"><span>✓ Bcrypt password verification</span><span>✓ Time-limited JWT session</span><span>✓ Role-based API access</span></div></div>
+    <div className="login-intro"><p className="eyebrow"><span /> Secure workspace</p><h1>Sign in to continue your review.</h1><p>Access is assigned by role. Your dashboard and available actions are based on your MediTrace account.</p></div>
     <form className="login-card" onSubmit={handleSubmit} noValidate>
       <div className="login-card-heading"><span className="section-number">01</span><div><p className="eyebrow"><span /> Account access</p><h2>Welcome back</h2></div></div>
       <label htmlFor="email">Email address</label>
