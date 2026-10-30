@@ -1,0 +1,31 @@
+{
+  "modelVersion": "logistic-regression-synthetic-v1",
+  "algorithm": "binary logistic regression; batch gradient descent",
+  "dataset": "synthetic_training_data.csv",
+  "datasetRows": 600,
+  "featureNames": [
+    "quantity_ratio",
+    "extreme_quantity",
+    "repeat_30d",
+    "controlled_category",
+    "patient_history",
+    "prescriber_history"
+  ],
+  "weights": [
+    1.5906535,
+    2.18201086,
+    0.86851777,
+    0.67327092,
+    1.0666087,
+    0.979464
+  ],
+  "bias": -3.38385384,
+  "evaluation": {
+    "testRows": 120,
+    "accuracy": 0.8667,
+    "precision": 0.5,
+    "recall": 0.4375
+  },
+  "notice": "Synthetic coursework prototype. Trained only on generated labels; not validated for clinical, fraud, or production use.",
+  "decisionPolicy": "Risk assessment is advisory. A pharmacist makes every prescription decision."
+}

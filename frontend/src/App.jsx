@@ -661,12 +661,96 @@ function LoginPage() {
     <form className="login-card" onSubmit={handleSubmit} noValidate>
       <div className="login-card-heading"><span className="section-number">01</span><div><p className="eyebrow"><span /> Account access</p><h2>Welcome back</h2></div></div>
       <label htmlFor="email">Email address</label>
-      <input id="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? "login-error" : undefined} placeholder="you@example.test" disabled={isSubmitting} />
+      <input id="email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? "login-error" : undefined} placeholder="you@example.com" disabled={isSubmitting} />
       <label htmlFor="password">Password</label>
       <div className="password-field"><input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} aria-invalid={Boolean(error)} aria-describedby={error ? "login-error" : undefined} placeholder="Enter your password" disabled={isSubmitting} /><button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} disabled={isSubmitting}>{showPassword ? "Hide" : "Show"}</button></div>
       {error && <div className="login-error" id="login-error" role="alert"><b>Sign-in failed</b><p>{error}</p></div>}
       <button className="primary-button login-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? <><span className="spinner" /> Signing in</> : <>Sign in securely <span aria-hidden="true">→</span></>}</button>
-      <div className="demo-access"><strong>Coursework demo account</strong><p><code>noah.pharmacist@example.test</code></p><p>Password: <code>DemoPass123!</code></p></div>
+      <p className="account-switch">Patient? <Link to="/register">Create an account</Link></p>
+      <p className="account-switch">Pharmacist? <Link to="/register?role=pharmacist">Apply for professional access</Link></p>
+    </form>
+  </section>;
+}
+
+function RegisterPage() {
+  const { user, startSession } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const accountType = new URLSearchParams(location.search).get("role") === "pharmacist" ? "pharmacist" : "patient";
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", dateOfBirth: "", password: "", confirmPassword: "" });
+  const [professional, setProfessional] = useState({ licenseNumber: "", organization: "" });
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (user) return <Navigate to={getRoleHome(user.role)} replace />;
+  function update(field, value) { setForm((current) => ({ ...current, [field]: value })); }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim() || (accountType === "patient" && !form.dateOfBirth) || !form.password) {
+      setError("Complete all required fields."); return;
+    }
+    if (accountType === "pharmacist" && (!professional.licenseNumber.trim() || !professional.organization.trim())) {
+      setError("Enter your pharmacist license number and organization."); return;
+    }
+    if (form.password !== form.confirmPassword) { setError("Passwords do not match."); return; }
+    if (form.password.length < 8) { setError("Password must contain at least 8 characters."); return; }
+    setIsSubmitting(true);
+    try {
+      const isPharmacist = accountType === "pharmacist";
+      const response = await fetch(`${API_URL}/api/auth/${isPharmacist ? "pharmacist-applications" : "register"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+          ...(isPharmacist ? professional : { dateOfBirth: form.dateOfBirth }),
+          password: form.password,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Could not create your account.");
+      if (isPharmacist) {
+        setSuccess(data.message || "Your pharmacist access request was submitted for review.");
+        setForm({ firstName: "", lastName: "", email: "", phone: "", dateOfBirth: "", password: "", confirmPassword: "" });
+        setProfessional({ licenseNumber: "", organization: "" });
+        return;
+      }
+      if (!data.token || !data.user) throw new Error(data.message || "Could not create your account.");
+      startSession({ token: data.token, user: data.user });
+      navigate("/patient", { replace: true });
+    } catch (requestError) { setError(requestError.name === "TypeError" ? "Could not reach MediTrace. Check that the backend is running." : requestError.message); } finally { setIsSubmitting(false); }
+  }
+
+  return <section className="login-page page-width register-page">
+    <div className="login-intro">
+      <p className="eyebrow"><span /> {accountType === "patient" ? "Patient account" : "Pharmacist access"}</p>
+      <h1>{accountType === "patient" ? "Create your safety profile." : "Apply for pharmacist access."}</h1>
+      <p>{accountType === "patient" ? "Maintain your allergy and medicine-reaction information, and view your prescription updates." : "Submit your professional details for administrator review. Pharmacist access is enabled only after your license is checked."}</p>
+      <div className="login-assurance">
+        {accountType === "patient" ? <><span>✓ Patient account</span><span>✓ Password protected</span><span>✓ Add safety details after registration</span></> : <><span>✓ License number required</span><span>✓ Access stays locked while pending</span><span>✓ Administrator approval required</span></>}
+      </div>
+    </div>
+    <form className="login-card register-card" onSubmit={handleSubmit} noValidate>
+      <div className="login-card-heading"><span className="section-number">01</span><div><p className="eyebrow"><span /> New account</p><h2>{accountType === "patient" ? "Create patient account" : "Request pharmacist access"}</h2></div></div>
+      <div className="account-type-switch" aria-label="Choose account type">
+        <Link className={accountType === "patient" ? "is-selected" : ""} aria-current={accountType === "patient" ? "page" : undefined} to="/register">Patient</Link>
+        <Link className={accountType === "pharmacist" ? "is-selected" : ""} aria-current={accountType === "pharmacist" ? "page" : undefined} to="/register?role=pharmacist">Pharmacist</Link>
+      </div>
+      <div className="register-fields"><label>First name<input value={form.firstName} onChange={(event) => update("firstName", event.target.value)} autoComplete="given-name" required maxLength="100" disabled={isSubmitting} /></label><label>Last name<input value={form.lastName} onChange={(event) => update("lastName", event.target.value)} autoComplete="family-name" required maxLength="100" disabled={isSubmitting} /></label></div>
+      <label>Email address<input type="email" value={form.email} onChange={(event) => update("email", event.target.value)} autoComplete="email" required maxLength="320" disabled={isSubmitting} /></label>
+      {accountType === "patient" ? <div className="register-fields"><label>Date of birth<input type="date" value={form.dateOfBirth} onChange={(event) => update("dateOfBirth", event.target.value)} required disabled={isSubmitting} /></label><label>Phone number <small>Optional</small><input value={form.phone} onChange={(event) => update("phone", event.target.value)} autoComplete="tel" maxLength="30" disabled={isSubmitting} /></label></div> : <><label>Pharmacist license number<input value={professional.licenseNumber} onChange={(event) => setProfessional((current) => ({ ...current, licenseNumber: event.target.value }))} autoComplete="off" required maxLength="100" disabled={isSubmitting} /></label><label>Organization or pharmacy<input value={professional.organization} onChange={(event) => setProfessional((current) => ({ ...current, organization: event.target.value }))} autoComplete="organization" required maxLength="200" disabled={isSubmitting} /></label><label>Phone number <small>Optional</small><input value={form.phone} onChange={(event) => update("phone", event.target.value)} autoComplete="tel" maxLength="30" disabled={isSubmitting} /></label></>}
+      <label>Password<input type="password" value={form.password} onChange={(event) => update("password", event.target.value)} autoComplete="new-password" required minLength="8" maxLength="128" disabled={isSubmitting} /></label>
+      <label>Confirm password<input type="password" value={form.confirmPassword} onChange={(event) => update("confirmPassword", event.target.value)} autoComplete="new-password" required minLength="8" maxLength="128" disabled={isSubmitting} /></label>
+      {error && <div className="login-error" role="alert"><b>{accountType === "patient" ? "Account could not be created" : "Request could not be submitted"}</b><p>{error}</p></div>}
+      {success && <div className="registration-success" role="status"><b>Request submitted</b><p>{success}</p><Link to="/login">Return to sign in</Link></div>}
+      <button className="primary-button login-submit" type="submit" disabled={isSubmitting || Boolean(success)}>{isSubmitting ? <><span className="spinner" /> Submitting</> : accountType === "patient" ? <>Create patient account <span aria-hidden="true">→</span></> : <>Submit access request <span aria-hidden="true">→</span></>}</button>
+      <p className="account-switch">Already have an account? <Link to="/login">Sign in</Link></p>
     </form>
   </section>;
 }
@@ -919,9 +1003,16 @@ function PharmacistModule() {
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [checkingPrescriptionId, setCheckingPrescriptionId] = useState(null);
+  const [assessingFraudId, setAssessingFraudId] = useState(null);
+  const [fraudResults, setFraudResults] = useState({});
+  const [explainingPrescriptionId, setExplainingPrescriptionId] = useState(null);
+  const [alertExplanations, setAlertExplanations] = useState({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [lastCheck, setLastCheck] = useState(null);
+  const [reviewDrafts, setReviewDrafts] = useState({});
+  const [resolvingAlertId, setResolvingAlertId] = useState(null);
+  const [reviewingPrescriptionId, setReviewingPrescriptionId] = useState(null);
 
   async function pharmacistRequest(path, options = {}) {
     const response = await fetch(`${API_URL}/api/pharmacist${path}`, {
@@ -984,6 +1075,7 @@ function PharmacistModule() {
 
   async function runSafetyCheck(prescriptionId) {
     clearMessages();
+    setAlertExplanations((current) => { const next = { ...current }; delete next[prescriptionId]; return next; });
     setCheckingPrescriptionId(prescriptionId);
     try {
       const data = await pharmacistRequest(`/prescriptions/${prescriptionId}/safety-check`, { method: "POST" });
@@ -995,6 +1087,76 @@ function PharmacistModule() {
       setError(requestError.message);
     } finally {
       setCheckingPrescriptionId(null);
+    }
+  }
+
+  async function assessFraudRisk(prescriptionId) {
+    clearMessages();
+    setAssessingFraudId(prescriptionId);
+    try {
+      const data = await pharmacistRequest(`/prescriptions/${prescriptionId}/fraud-risk`, { method: "POST" });
+      setFraudResults((current) => ({ ...current, [prescriptionId]: data.assessment }));
+      setNotice("Fraud-risk assessment saved. It is advisory and does not decide the prescription outcome.");
+      await refreshSelectedPatient();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setAssessingFraudId(null);
+    }
+  }
+
+  async function explainSavedAlerts(prescriptionId) {
+    clearMessages();
+    setExplainingPrescriptionId(prescriptionId);
+    try {
+      const data = await pharmacistRequest(`/prescriptions/${prescriptionId}/explain-alerts`, { method: "POST" });
+      setAlertExplanations((current) => ({ ...current, [prescriptionId]: data }));
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setExplainingPrescriptionId(null);
+    }
+  }
+
+  async function refreshSelectedPatient() {
+    const data = await pharmacistRequest(`/patients/${selectedPatient.id}/safety-profile`);
+    setSelectedPatient(data.patient);
+  }
+
+  async function resolveAlert(alertId) {
+    clearMessages();
+    setResolvingAlertId(alertId);
+    try {
+      const data = await pharmacistRequest(`/alerts/${alertId}/resolve`, { method: "PATCH" });
+      setNotice(data.message);
+      setAlertExplanations({});
+      await refreshSelectedPatient();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setResolvingAlertId(null);
+    }
+  }
+
+  async function submitReview(prescriptionId) {
+    const draft = reviewDrafts[prescriptionId] || { status: "", notes: "" };
+    clearMessages();
+    if (!draft.status) {
+      setError("Choose a final pharmacist decision before saving.");
+      return;
+    }
+    setReviewingPrescriptionId(prescriptionId);
+    try {
+      const data = await pharmacistRequest(`/prescriptions/${prescriptionId}/review`, {
+        method: "POST",
+        body: JSON.stringify(draft),
+      });
+      setNotice(data.message);
+      await refreshSelectedPatient();
+    } catch (requestError) {
+      setError(requestError.message);
+    } finally {
+      setReviewingPrescriptionId(null);
     }
   }
 
@@ -1023,6 +1185,7 @@ function PharmacistModule() {
         <section className="pharmacist-card patient-identity-card">
           <div className="patient-card-heading"><div><span className="section-number">01</span><h2>{selectedPatient.firstName} {selectedPatient.lastName}</h2></div><span className="record-tag">Patient selected</span></div>
           <div className="identity-details"><div><small>Email</small><span>{selectedPatient.email}</span></div><div><small>Phone</small><span>{selectedPatient.phone || "Not recorded"}</span></div><div><small>Date of birth</small><span>{displayDate(selectedPatient.dateOfBirth)}</span></div><div><small>Safety data</small><span>{selectedPatient.allergies.length} allergies · {selectedPatient.reactions.length} reactions</span></div></div>
+          <Link className="secondary-button patient-create-link" to="/pharmacist/new-prescription" state={{ patient: selectedPatient }}>Create prescription →</Link>
         </section>
 
         <section className="pharmacist-card">
@@ -1038,13 +1201,86 @@ function PharmacistModule() {
 
       <aside className="prescription-review-panel">
         <div className="patient-card-heading"><div><span className="section-number">04</span><h2>Prescription review</h2></div><span className="record-tag">Human decision required</span></div>
-        <p>Select a prescription and run the safety rules. Alerts are stored with their source basis and must be reviewed by a pharmacist.</p>
-        <div className="pharmacist-prescription-list">{selectedPatient.prescriptions.length ? selectedPatient.prescriptions.map((prescription) => <article className="pharmacist-prescription" key={prescription.id}><div className="prescription-status"><span className={`status-badge is-${prescription.status}`}>{prettyLabel(prescription.status)}</span><time>{displayDate(prescription.issueDate)}</time></div><h3>Dr. {prescription.prescriber?.firstName} {prescription.prescriber?.lastName}</h3><div className="review-medicine-list">{prescription.items.map((item) => <div key={item.id}><b>{item.medicine.name}</b><span>{item.medicine.genericName} · {item.medicine.strength} · {item.frequency}</span>{item.safetyAlerts.filter((alert) => !alert.isResolved).map((alert) => <small className={`review-alert is-${alert.severity}`} key={alert.id}>{prettyLabel(alert.alertType)} · {prettyLabel(alert.severity)}</small>)}</div>)}</div><button className="primary-button rule-check-button" type="button" onClick={() => runSafetyCheck(prescription.id)} disabled={checkingPrescriptionId !== null}>{checkingPrescriptionId === prescription.id ? <><span className="spinner" /> Checking rules</> : <>Run safety checks <span aria-hidden="true">→</span></>}</button>{lastCheck?.prescriptionId === prescription.id && <div className="check-result"><b>{lastCheck.alerts.length ? `${lastCheck.alerts.length} alert${lastCheck.alerts.length === 1 ? "" : "s"} found` : "No rule-based alerts"}</b>{lastCheck.alerts.length ? lastCheck.alerts.map((alert) => <p key={alert.id || `${alert.alertType}-${alert.message}`}><span className={`severity-badge is-${alert.severity}`}>{prettyLabel(alert.severity)}</span>{alert.message}</p>) : <p>The defined allergy, reaction, cross-reactivity, and interaction rules returned no matches. Clinical review is still required.</p>}</div>}</article>) : <div className="empty-prescriptions"><span>↗</span><b>No prescriptions are available for this patient.</b><p>Once a prescription is uploaded, it can be checked here.</p></div>}</div>
+        <p>Run database safety checks and a separate advisory ML risk assessment. The pharmacist makes the final decision.</p>
+        <div className="pharmacist-prescription-list">{selectedPatient.prescriptions.length ? selectedPatient.prescriptions.map((prescription) => { const draft = reviewDrafts[prescription.id] || { status: "", notes: "" }; const openAlerts = prescription.items.flatMap((item) => item.safetyAlerts.filter((alert) => !alert.isResolved)); let savedExplanation = {}; try { savedExplanation = prescription.fraudAssessment?.explanation ? JSON.parse(prescription.fraudAssessment.explanation) : {}; } catch {} const fraudAssessment = fraudResults[prescription.id] || (prescription.fraudAssessment ? { ...prescription.fraudAssessment, ...savedExplanation } : null); return <article className="pharmacist-prescription" key={prescription.id}><div className="prescription-status"><span className={`status-badge is-${prescription.status}`}>{prettyLabel(prescription.status)}</span><time>{displayDate(prescription.issueDate)}</time></div><h3>Dr. {prescription.prescriber?.firstName} {prescription.prescriber?.lastName}</h3><div className="review-medicine-list">{prescription.items.map((item) => <div key={item.id}><b>{item.medicine.name}</b><span>{item.medicine.genericName} · {item.medicine.strength} · {item.frequency}</span></div>)}</div><button className="primary-button rule-check-button" type="button" onClick={() => runSafetyCheck(prescription.id)} disabled={checkingPrescriptionId !== null}>{checkingPrescriptionId === prescription.id ? <><span className="spinner" /> Checking rules</> : <>Run safety checks <span aria-hidden="true">→</span></>}</button><button className="secondary-button rule-check-button" type="button" onClick={() => assessFraudRisk(prescription.id)} disabled={assessingFraudId !== null}>{assessingFraudId === prescription.id ? <><span className="spinner" /> Assessing risk</> : <>Assess fraud risk with ML <span aria-hidden="true">→</span></>}</button>{fraudAssessment && <div className="fraud-result"><div><b>Risk score {Number(fraudAssessment.riskScore).toFixed(1)} / 100</b><span className={`risk-level is-${fraudAssessment.riskLevel}`}>{prettyLabel(fraudAssessment.riskLevel)} risk</span></div><small>{fraudAssessment.modelVersion} · {fraudAssessment.assessedAt ? new Date(fraudAssessment.assessedAt).toLocaleString() : "Saved assessment"}</small><ul>{(fraudAssessment.reasons || []).map((reason) => <li key={reason}>{reason}</li>)}</ul><p>{fraudAssessment.notice || "Synthetic coursework model; advisory only. Pharmacist review remains required."}</p></div>}{openAlerts.length > 0 && <div className="open-alert-list">{openAlerts.map((alert) => <div key={alert.id}><span className={`severity-badge is-${alert.severity}`}>{prettyLabel(alert.alertType)} · {prettyLabel(alert.severity)}</span><button className="text-button" type="button" onClick={() => resolveAlert(alert.id)} disabled={resolvingAlertId !== null}>{resolvingAlertId === alert.id ? "Addressing…" : "Mark addressed"}</button></div>)}</div>}
+{openAlerts.length > 0 && <div className="alert-explain-controls"><button className="secondary-button" type="button" onClick={() => explainSavedAlerts(prescription.id)} disabled={explainingPrescriptionId !== null}>{explainingPrescriptionId === prescription.id ? "Preparing explanation…" : "Explain saved alerts"}</button><small>Only saved open alert text is sent to OpenAI when a key is configured.</small></div>}
+{openAlerts.length > 0 && alertExplanations[prescription.id] && <div className="alert-explanation" role="status"><div><b>Saved-alert explanation</b><span>{alertExplanations[prescription.id].mode === "openai" ? "OpenAI · saved alerts only" : alertExplanations[prescription.id].mode === "local_fallback" ? "Local fallback · OpenAI unavailable" : "Local summary · no OpenAI key configured"}</span></div><p>{alertExplanations[prescription.id].explanation}</p><small>{alertExplanations[prescription.id].disclaimer}</small></div>}
+<div className="review-decision"><label>Final decision<select value={draft.status} onChange={(event) => setReviewDrafts((current) => ({ ...current, [prescription.id]: { ...draft, status: event.target.value } }))}><option value="">Choose decision</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="escalated">Escalated</option><option value="finalized">Finalized</option></select></label><label>Pharmacist notes<textarea value={draft.notes} onChange={(event) => setReviewDrafts((current) => ({ ...current, [prescription.id]: { ...draft, notes: event.target.value } }))} placeholder="Required for rejection or escalation" maxLength="4000" /></label><button className="secondary-button" type="button" onClick={() => submitReview(prescription.id)} disabled={reviewingPrescriptionId !== null}>{reviewingPrescriptionId === prescription.id ? "Saving decision…" : "Save final decision"}</button></div>{lastCheck?.prescriptionId === prescription.id && <div className="check-result"><b>{lastCheck.alerts.length ? `${lastCheck.alerts.length} alert${lastCheck.alerts.length === 1 ? "" : "s"} found` : "No rule-based alerts"}</b>{lastCheck.alerts.length ? lastCheck.alerts.map((alert) => <p key={alert.id || `${alert.alertType}-${alert.message}`}><span className={`severity-badge is-${alert.severity}`}>{prettyLabel(alert.severity)}</span>{alert.message}</p>) : <p>The defined allergy, reaction, cross-reactivity, and interaction rules returned no matches. Clinical review is still required.</p>}</div>}</article> }) : <div className="empty-prescriptions"><span>↗</span><b>No prescriptions are available for this patient.</b><p>Once a prescription is uploaded, it can be checked here.</p></div>}</div>
       </aside>
     </div>}
 
     {!isLoadingProfile && !selectedPatient && !patients.length && !error && <div className="pharmacist-empty-state"><span>01</span><div><b>Search for a patient to begin the pharmacist workflow.</b><p>The patient profile is loaded only after you choose a search result, then the safety checks are run against a selected prescription.</p></div></div>}
   </section>;
+}
+
+const EMPTY_PRESCRIPTION_ITEM = () => ({ medicineId: "", doseAmount: "", doseUnit: "mg", frequency: "", route: "Oral", durationDays: "", quantity: "", instructions: "" });
+
+function PrescriptionComposer() {
+  const { session } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const patient = location.state?.patient;
+  const [prescribers, setPrescribers] = useState([]);
+  const [medicines, setMedicines] = useState([]);
+  const [prescriberId, setPrescriberId] = useState("");
+  const [issueDate, setIssueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [items, setItems] = useState([EMPTY_PRESCRIPTION_ITEM()]);
+  const [createdPrescription, setCreatedPrescription] = useState(null);
+  const [file, setFile] = useState(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  async function pharmacistRequest(path, options = {}) {
+    const response = await fetch(`${API_URL}/api/pharmacist${path}`, { ...options, headers: { Authorization: `Bearer ${session.token}`, ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.message || "The request could not be completed.");
+    return data;
+  }
+
+  useEffect(() => {
+    if (!patient) return;
+    let current = true;
+    Promise.all([pharmacistRequest("/prescribers"), pharmacistRequest("/medicines")]).then(([prescriberData, medicineData]) => {
+      if (!current) return;
+      setPrescribers(prescriberData.prescribers || []);
+      setMedicines(medicineData.medicines || []);
+      if (prescriberData.prescribers?.[0]) setPrescriberId(prescriberData.prescribers[0].id);
+    }).catch((requestError) => current && setError(requestError.name === "TypeError" ? "Could not connect to MediTrace. Check that the backend is running." : requestError.message)).finally(() => current && setIsLoading(false));
+    return () => { current = false; };
+  }, []);
+
+  function updateItem(index, field, value) { setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item)); }
+  function removeItem(index) { setItems((current) => current.length === 1 ? current : current.filter((_, itemIndex) => itemIndex !== index)); }
+
+  async function createPrescription(event) {
+    event.preventDefault();
+    setError(""); setNotice(""); setIsSaving(true);
+    try {
+      const data = await pharmacistRequest("/prescriptions", { method: "POST", body: JSON.stringify({ patientId: patient.id, prescriberId, issueDate, items }) });
+      setCreatedPrescription(data.prescription);
+      setNotice(data.message);
+    } catch (requestError) { setError(requestError.message); } finally { setIsSaving(false); }
+  }
+
+  async function uploadSource() {
+    if (!file || !createdPrescription) { setError("Choose a prescription image first."); return; }
+    if (!ACCEPTED_TYPES.includes(file.type) || file.size === 0 || file.size > MAX_FILE_SIZE) { setError("Choose a non-empty JPG or PNG image that is 5 MB or smaller."); return; }
+    setError(""); setNotice(""); setIsUploading(true);
+    const formData = new FormData(); formData.append("prescriptionImage", file);
+    try {
+      const response = await fetch(`${API_URL}/api/prescriptions/${createdPrescription.id}/image`, { method: "POST", headers: { Authorization: `Bearer ${session.token}` }, body: formData });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Could not upload the prescription image.");
+      setNotice(`Source image stored. OCR found ${data.prescription?.medicines?.length || 0} medicine entries; compare it with the manually entered prescription before review.`);
+    } catch (requestError) { setError(requestError.name === "TypeError" ? "Could not connect to MediTrace. Check that the backend is running." : requestError.message); } finally { setIsUploading(false); }
+  }
+
+  if (!patient) return <Navigate to="/pharmacist" replace />;
+  if (isLoading) return <RouteLoading />;
+  return <section className="composer-page page-width"><div className="page-intro"><button className="back-button" type="button" onClick={() => navigate("/pharmacist")}>← Back to pharmacist workspace</button><p className="eyebrow"><span /> New prescription</p><h1>Create the review record first.</h1><p>Patient: <b>{patient.firstName} {patient.lastName}</b>. Enter the prescription details from the source, then upload the image for OCR support and run safety checks from the pharmacist workspace.</p></div>{error && <div className="patient-message is-error" role="alert"><b>Something needs attention</b><span>{error}</span></div>}{notice && <div className="patient-message is-success" role="status"><b>Prescription workflow</b><span>{notice}</span></div>}<div className="composer-layout"><form className="composer-card" onSubmit={createPrescription} noValidate><div className="patient-card-heading"><div><span className="section-number">01</span><h2>Prescription details</h2></div><span className="record-tag">Manual verification</span></div><div className="composer-top-fields"><label>Prescriber<select value={prescriberId} onChange={(event) => setPrescriberId(event.target.value)} disabled={Boolean(createdPrescription)} required><option value="">Choose prescriber</option>{prescribers.map((prescriber) => <option value={prescriber.id} key={prescriber.id}>Dr. {prescriber.firstName} {prescriber.lastName} · {prescriber.specialization}</option>)}</select></label><label>Issue date<input type="date" value={issueDate} onChange={(event) => setIssueDate(event.target.value)} disabled={Boolean(createdPrescription)} required /></label></div><div className="composer-items">{items.map((item, index) => <fieldset key={index} disabled={Boolean(createdPrescription)}><legend>Medicine {String(index + 1).padStart(2, "0")}</legend><div className="composer-item-grid"><label className="composer-span-2">Medicine<select value={item.medicineId} onChange={(event) => updateItem(index, "medicineId", event.target.value)} required><option value="">Choose medicine</option>{medicines.map((medicine) => <option value={medicine.id} key={medicine.id}>{medicine.name} · {medicine.genericName} · {medicine.strength}</option>)}</select></label><label>Dose amount<input inputMode="decimal" value={item.doseAmount} onChange={(event) => updateItem(index, "doseAmount", event.target.value)} placeholder="500" required /></label><label>Dose unit<input value={item.doseUnit} onChange={(event) => updateItem(index, "doseUnit", event.target.value)} placeholder="mg" maxLength="50" required /></label><label>Frequency<input value={item.frequency} onChange={(event) => updateItem(index, "frequency", event.target.value)} placeholder="Three times daily" maxLength="100" required /></label><label>Route<input value={item.route} onChange={(event) => updateItem(index, "route", event.target.value)} placeholder="Oral" maxLength="100" required /></label><label>Duration (days)<input inputMode="numeric" value={item.durationDays} onChange={(event) => updateItem(index, "durationDays", event.target.value)} placeholder="5" required /></label><label>Quantity<input inputMode="numeric" value={item.quantity} onChange={(event) => updateItem(index, "quantity", event.target.value)} placeholder="15" required /></label><label className="composer-span-2">Instructions<textarea value={item.instructions} onChange={(event) => updateItem(index, "instructions", event.target.value)} placeholder="Optional instructions" maxLength="2000" /></label></div>{items.length > 1 && <button className="danger-button" type="button" onClick={() => removeItem(index)}>Remove medicine</button>}</fieldset>)}</div>{!createdPrescription && <div className="form-actions"><button className="secondary-button" type="button" onClick={() => setItems((current) => [...current, EMPTY_PRESCRIPTION_ITEM()])}>Add medicine</button><button className="primary-button" type="submit" disabled={isSaving}>{isSaving ? "Creating…" : <>Create prescription <span aria-hidden="true">→</span></>}</button></div>}</form><aside className="composer-side-card"><span className="section-number">02</span><h2>Source image & next steps</h2><p>After creating the database record, attach the original prescription image. OCR assists review but never replaces the entered details or pharmacist decision.</p>{createdPrescription ? <><div className="created-record"><b>Prescription created</b><span>Status: {prettyLabel(createdPrescription.status)}</span><small>ID {createdPrescription.id}</small></div><label className="file-picker-label">Source image<input type="file" accept="image/jpeg,image/png" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>{file && <p className="selected-file">{file.name} · {formatFileSize(file.size)}</p>}<button className="primary-button rule-check-button" type="button" onClick={uploadSource} disabled={isUploading}>{isUploading ? <><span className="spinner" /> Uploading</> : <>Upload & read image <span aria-hidden="true">→</span></>}</button><button className="text-button composer-return" type="button" onClick={() => navigate("/pharmacist")}>Return to safety review →</button></> : <ol className="composer-steps"><li>Add the prescriber, issue date, and medicines.</li><li>Create the prescription database record.</li><li>Attach its image, run safety checks, then save a pharmacist decision.</li></ol>}</aside></div></section>;
 }
 
 const DASHBOARD_CONTENT = {
@@ -1062,17 +1298,73 @@ function RoleDashboard() {
   return <section className="dashboard-page page-width"><div className="dashboard-heading"><div><p className="eyebrow"><span /> {content.label}</p><h1>{content.title}</h1><p>{content.description}</p></div><div className="role-card"><small>Signed in as</small><strong>{user.firstName} {user.lastName}</strong><span>{user.email}</span><b>{user.role}</b></div></div><div className="dashboard-grid"><section className="dashboard-main"><span className="section-number">01</span><h2>Today’s starting point</h2><p>This protected dashboard confirms your account and role. The role-specific modules will add live patient, prescription, and audit data next.</p><Link className="primary-button" to={content.actionPath}>{content.action} <span aria-hidden="true">→</span></Link></section><section className="dashboard-tasks"><div className="card-heading"><span className="section-number">02</span><h3>Available next steps</h3></div>{content.tasks.map((task, index) => <div className="task-row" key={task}><span>{String(index + 1).padStart(2, "0")}</span><p>{task}</p><b>→</b></div>)}</section></div></section>;
 }
 
+function AdminModule() {
+  const { session, user } = useAuth();
+  const [applications, setApplications] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [workingId, setWorkingId] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function loadApplications() {
+    setError("");
+    try {
+      const response = await fetch(`${API_URL}/api/admin/pharmacist-applications`, { headers: { Authorization: `Bearer ${session.token}` } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Could not load pharmacist access requests.");
+      setApplications(data.applications || []);
+    } catch (requestError) {
+      setError(requestError.name === "TypeError" ? "Could not connect to MediTrace. Check that the backend is running." : requestError.message);
+    } finally { setIsLoading(false); }
+  }
+
+  useEffect(() => { loadApplications(); }, []);
+
+  async function decide(application, decision) {
+    setWorkingId(application.userId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`${API_URL}/api/admin/pharmacist-applications/${application.userId}/decision`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Could not update this request.");
+      setNotice(data.message);
+      await loadApplications();
+    } catch (requestError) {
+      setError(requestError.name === "TypeError" ? "Could not connect to MediTrace. Check that the backend is running." : requestError.message);
+    } finally { setWorkingId(""); }
+  }
+
+  return <section className="admin-page page-width">
+    <div className="admin-heading"><div><p className="eyebrow"><span /> Admin workspace</p><h1>Pharmacist access requests</h1><p>Review the applicant’s professional details and verify their license with the issuing authority before approving access.</p></div><div className="role-card"><small>Administrator</small><strong>{user.firstName} {user.lastName}</strong><span>{user.email}</span></div></div>
+    {error && <div className="patient-message is-error" role="alert"><b>Could not complete request</b><span>{error}</span></div>}
+    {notice && <div className="patient-message is-success" role="status"><b>Access review updated</b><span>{notice}</span></div>}
+    <div className="admin-section-heading"><div><span className="section-number">01</span><h2>Pending applications</h2></div><button className="secondary-button" type="button" onClick={loadApplications} disabled={isLoading}>Refresh</button></div>
+    {isLoading ? <div className="route-loading"><span className="spinner" /> Loading access requests…</div> : applications.length === 0 ? <div className="admin-empty"><strong>No pending pharmacist applications</strong><p>New requests will appear here for administrator review.</p></div> : <div className="admin-application-list">{applications.map((application) => <article className="admin-application-card" key={application.userId}>
+      <div className="admin-application-header"><div><span className="record-tag">License review required</span><h3>{application.firstName} {application.lastName}</h3><a href={`mailto:${application.email}`}>{application.email}</a></div><time dateTime={application.createdAt}>Submitted {displayDate(application.createdAt)}</time></div>
+      <dl className="admin-application-details"><div><dt>License number</dt><dd>{application.pharmacistLicenseNumber}</dd></div><div><dt>Organization</dt><dd>{application.pharmacistOrganization}</dd></div><div><dt>Phone</dt><dd>{application.phone || "Not provided"}</dd></div></dl>
+      <div className="admin-application-actions"><button className="secondary-button" type="button" onClick={() => decide(application, "reject")} disabled={Boolean(workingId)}>{workingId === application.userId ? "Updating…" : "Reject request"}</button><button className="primary-button" type="button" onClick={() => decide(application, "approve")} disabled={Boolean(workingId)}>{workingId === application.userId ? "Updating…" : "Approve access"}</button></div>
+    </article>)}</div>}
+  </section>;
+}
+
 function AppRoutes() {
   return (
     <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
         <Route path="/dashboard" element={<ProtectedRoute><RoleDashboard /></ProtectedRoute>} />
         <Route path="/patient" element={<ProtectedRoute allowedRoles={["patient"]}><PatientModule /></ProtectedRoute>} />
         <Route path="/pharmacist" element={<ProtectedRoute allowedRoles={["pharmacist", "admin"]}><PharmacistModule /></ProtectedRoute>} />
+        <Route path="/pharmacist/new-prescription" element={<ProtectedRoute allowedRoles={["pharmacist", "admin"]}><PrescriptionComposer /></ProtectedRoute>} />
         <Route path="/doctor" element={<ProtectedRoute allowedRoles={["doctor"]}><RoleDashboard /></ProtectedRoute>} />
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><RoleDashboard /></ProtectedRoute>} />
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={["admin"]}><AdminModule /></ProtectedRoute>} />
         <Route path="/prescriptions/new" element={<ProtectedRoute allowedRoles={["pharmacist", "doctor", "admin"]}><PrescriptionPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

@@ -3,7 +3,7 @@ require('dotenv').config();
 const nodeEnv = process.env.NODE_ENV || 'development';
 
 function valueIsPlaceholder(value) {
-  return !value || value.startsWith('replace_');
+  return !value || /^(replace_|change_me|your_)/i.test(value.trim());
 }
 
 const env = {
@@ -18,6 +18,9 @@ const env = {
       if (valueIsPlaceholder(process.env[name])) {
         throw new Error(`${name} must be set to a real local value before the backend starts.`);
       }
+    }
+    if (process.env.JWT_SECRET.length < 32) {
+      throw new Error('JWT_SECRET must contain at least 32 characters. Generate a unique secret for this installation.');
     }
   }
 };

@@ -2,11 +2,10 @@
 BEGIN;
 INSERT INTO app_users (email, password_hash, role, first_name, last_name, phone, date_of_birth, doctor_license_number, specialization)
 VALUES
-  ('olivia.carter@example.test', crypt('DemoPass123!', gen_salt('bf', 12)), 'doctor', 'Olivia', 'Carter', '+1-555-0100', NULL, 'DEMO-MED-1001', 'General Medicine'),
-  ('liam.bennett@example.test', crypt('DemoPass123!', gen_salt('bf', 12)), 'patient', 'Liam', 'Bennett', '+1-555-0101', DATE '1988-04-12', NULL, NULL),
-  ('ava.mitchell@example.test', crypt('DemoPass123!', gen_salt('bf', 12)), 'patient', 'Ava', 'Mitchell', '+1-555-0102', DATE '1995-09-23', NULL, NULL),
-  ('noah.pharmacist@example.test', crypt('DemoPass123!', gen_salt('bf', 12)), 'pharmacist', 'Noah', 'Davis', '+1-555-0103', NULL, NULL, NULL),
-  ('mia.admin@example.test', crypt('DemoPass123!', gen_salt('bf', 12)), 'admin', 'Mia', 'Admin', '+1-555-0104', NULL, NULL, NULL)
+  ('olivia.carter@example.test', crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf', 12)), 'doctor', 'Olivia', 'Carter', '+1-555-0100', NULL, 'DEMO-MED-1001', 'General Medicine'),
+  ('liam.bennett@example.test', crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf', 12)), 'patient', 'Liam', 'Bennett', '+1-555-0101', DATE '1988-04-12', NULL, NULL),
+  ('ava.mitchell@example.test', crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf', 12)), 'patient', 'Ava', 'Mitchell', '+1-555-0102', DATE '1995-09-23', NULL, NULL),
+  ('noah.pharmacist@example.test', crypt(encode(gen_random_bytes(32), 'hex'), gen_salt('bf', 12)), 'pharmacist', 'Noah', 'Davis', '+1-555-0103', NULL, NULL, NULL)
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO drug_classes (class_name, description) VALUES

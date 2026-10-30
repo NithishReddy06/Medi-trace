@@ -19,6 +19,9 @@ model User {
   dateOfBirth DateTime? @map("date_of_birth") @db.Date
   doctorLicenseNumber String? @unique @map("doctor_license_number") @db.VarChar(100)
   specialization String? @db.VarChar(150)
+  pharmacistLicenseNumber String? @unique @map("pharmacist_license_number") @db.VarChar(100)
+  pharmacistOrganization String? @map("pharmacist_organization") @db.VarChar(200)
+  pharmacistApplicationStatus String? @map("pharmacist_application_status") @db.VarChar(20)
   isActive Boolean @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -35,6 +38,7 @@ model User {
   fraudAssessments FraudRiskAssessment[] @relation("AssessmentRunner")
   resolvedAlerts SafetyAlert[] @relation("AlertResolver")
   auditLogs AuditLog[]
+  @@index([role, pharmacistApplicationStatus, createdAt(sort: Desc)], map: "app_users_pharmacist_applications_idx")
   @@map("app_users")
 }
 

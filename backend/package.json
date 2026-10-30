@@ -7,6 +7,9 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "admin:create": "node scripts/createAdmin.js",
+    "ml:train": "node ml/train_model.js",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:studio": "prisma studio"
   },
