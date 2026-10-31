@@ -313,12 +313,81 @@ app.post("/api/auth/pharmacist-applications", registrationRateLimit, async (requ
   }
 });
 
+app.post("/api/auth/doctor-applications", registrationRateLimit, async (request, response) => {
+  try {
+    const body = request.body || {};
+    const email = registrationText(body.email, "Email", 320).toLowerCase();
+    const firstName = registrationText(body.firstName, "First name", 100);
+    const lastName = registrationText(body.lastName, "Last name", 100);
+    const phone = registrationOptionalText(body.phone, "Phone number", 30);
+    const doctorLicenseNumber = registrationText(body.licenseNumber, "Doctor license number", 100);
+    const specialization = registrationText(body.specialization, "Specialization", 150);
+    const password = typeof body.password === "string" ? body.password : "";
+
+    if (!/^\S+@\S+\.\S+$/.test(email)) return response.status(400).json({ status: "error", message: "Enter a valid email address." });
+    if (password.length < 8 || password.length > 128) return response.status(400).json({ status: "error", message: "Password must be between 8 and 128 characters." });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.$transaction(async (transaction) => {
+      const applicant = await transaction.user.create({
+        data: { email, passwordHash, role: "doctor", firstName, lastName, phone, doctorLicenseNumber, specialization, pharmacistApplicationStatus: "pending", isActive: false },
+        select: { userId: true },
+      });
+      await transaction.auditLog.create({
+        data: { actorUserId: applicant.userId, action: "INSERT", entityType: "app_users", entityId: applicant.userId, eventData: { source: "doctor_access_application", status: "pending" } },
+      });
+    });
+    response.status(202).json({ status: "pending", message: "Your doctor access request was submitted. An administrator must review your license before you can sign in." });
+  } catch (error) {
+    if (error.code === "P2002") return response.status(409).json({ status: "error", message: "An account or doctor license with those details already exists." });
+    if (error.message && !error.code) return response.status(400).json({ status: "error", message: error.message });
+    console.error("Doctor access application failed:", error);
+    response.status(500).json({ status: "error", message: "Could not submit your application. Please try again." });
+  }
+});
+
+app.get("/api/admin/doctor-applications", requireAuth, requireRole("admin"), async (request, response) => {
+  try {
+    const applications = await prisma.user.findMany({
+      where: { role: "doctor", pharmacistApplicationStatus: "pending", isActive: false },
+      select: { userId: true, role: true, firstName: true, lastName: true, email: true, phone: true, doctorLicenseNumber: true, specialization: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+    response.json({ status: "ok", applications: applications.map((application) => ({ ...application, userId: application.userId.toString() })) });
+  } catch (error) {
+    console.error("Doctor application list failed:", error.message);
+    response.status(500).json({ status: "error", message: "Could not load doctor access requests." });
+  }
+});
+
+app.post("/api/admin/doctor-applications/:userId/decision", requireAuth, requireRole("admin"), async (request, response) => {
+  const userId = Number(request.params.userId);
+  const decision = request.body?.decision;
+  if (!Number.isSafeInteger(userId) || userId < 1 || !["approve", "reject"].includes(decision)) return response.status(400).json({ status: "error", message: "Choose a valid application and decision." });
+  try {
+    await prisma.$transaction(async (transaction) => {
+      const applicant = await transaction.user.findUnique({ where: { userId: BigInt(userId) }, select: { userId: true, role: true, pharmacistApplicationStatus: true } });
+      if (!applicant || applicant.role !== "doctor" || applicant.pharmacistApplicationStatus !== "pending") {
+        const error = new Error("This doctor access request is no longer pending."); error.statusCode = 409; throw error;
+      }
+      await transaction.user.update({ where: { userId: applicant.userId }, data: { isActive: decision === "approve", pharmacistApplicationStatus: decision === "approve" ? "approved" : "rejected" } });
+      await transaction.auditLog.create({ data: { actorUserId: BigInt(request.user.id), action: "UPDATE", entityType: "app_users", entityId: applicant.userId, eventData: { source: "doctor_access_review", decision } } });
+    });
+    response.json({ status: "ok", message: decision === "approve" ? "Doctor access approved." : "Doctor access request rejected." });
+  } catch (error) {
+    if (error.statusCode) return response.status(error.statusCode).json({ status: "error", message: error.message });
+    console.error("Doctor application decision failed:", error.message);
+    response.status(500).json({ status: "error", message: "Could not update this doctor access request." });
+  }
+});
+
 app.get("/api/admin/pharmacist-applications", requireAuth, requireRole("admin"), async (request, response) => {
   try {
     const applications = await prisma.user.findMany({
       where: { role: "pharmacist", pharmacistApplicationStatus: "pending", isActive: false },
       select: {
         userId: true,
+        role: true,
         firstName: true,
         lastName: true,
         email: true,
