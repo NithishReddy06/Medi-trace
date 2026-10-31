@@ -1516,7 +1516,9 @@ footer i { background: var(--accent); }
 }
 
 .account-type-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: -8px 0 20px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: #f5f7fa; }
-.account-type-switch a { padding: 10px; border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 750; text-align: center; text-decoration: none; }
+.account-type-switch a { padding: 10px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); font-size: 12px; font-weight: 750; text-align: center; text-decoration: none; transition: color .18s ease, background-color .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.account-type-switch a:not(.is-selected):hover { background: rgba(255, 255, 255, .72); color: var(--primary); }
+.account-type-switch a:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 30%, transparent); outline-offset: 2px; }
 .account-type-switch a.is-selected { background: var(--surface); color: var(--primary); box-shadow: 0 1px 4px rgba(20, 35, 55, .12); }
 .registration-success { margin-top: 18px; padding: 14px; border: 1px solid #a8d7bd; border-radius: 9px; background: #f0faf4; color: #205d3b; font-size: 12px; line-height: 1.6; }
 .registration-success b { display: block; }
